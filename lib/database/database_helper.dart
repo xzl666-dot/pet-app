@@ -100,9 +100,66 @@ class DatabaseHelper {
         username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         is_admin INTEGER NOT NULL DEFAULT 0,
-        is_online INTEGER NOT NULL DEFAULT 0
+        is_online INTEGER NOT NULL DEFAULT 0,
+        challenge_win INTEGER NOT NULL DEFAULT 0,
+        challenge_lose INTEGER NOT NULL DEFAULT 0,
+        challenge_score INTEGER NOT NULL DEFAULT 100
       )
     ''');
+
+    // 添加挑战相关表
+    await db.execute('''
+      CREATE TABLE challenge (
+        challengeId TEXT PRIMARY KEY,
+        publisherId INTEGER NOT NULL,
+        opponentId INTEGER,
+        taskId INTEGER NOT NULL,
+        challengeName TEXT NOT NULL,
+        status INTEGER NOT NULL DEFAULT 0,
+        createTime TEXT NOT NULL,
+        matchTime TEXT,
+        settleTime TEXT,
+        winnerId INTEGER,
+        FOREIGN KEY (publisherId) REFERENCES users (id),
+        FOREIGN KEY (opponentId) REFERENCES users (id),
+        FOREIGN KEY (taskId) REFERENCES tasks (id),
+        FOREIGN KEY (winnerId) REFERENCES users (id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE challenge_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        challengeId TEXT NOT NULL,
+        userId INTEGER NOT NULL,
+        finishStatus INTEGER NOT NULL,
+        finishTime INTEGER,
+        taskScore INTEGER,
+        comprehensiveScore REAL,
+        petExpReward INTEGER,
+        challengeScoreChange INTEGER,
+        syncTime TEXT NOT NULL,
+        FOREIGN KEY (challengeId) REFERENCES challenge (challengeId),
+        FOREIGN KEY (userId) REFERENCES users (id)
+      )
+    ''');
+
+    // 添加索引
+    await db.execute('CREATE INDEX idx_challenge_publisherId ON challenge (publisherId)');
+    await db.execute('CREATE INDEX idx_challenge_opponentId ON challenge (opponentId)');
+    await db.execute('CREATE INDEX idx_challenge_taskId ON challenge (taskId)');
+    await db.execute('CREATE INDEX idx_challenge_status ON challenge (status)');
+    await db.execute('CREATE INDEX idx_challengeRecord_challengeId ON challenge_record (challengeId)');
+    await db.execute('CREATE INDEX idx_challengeRecord_userId ON challenge_record (userId)');
+
+    // 为现有用户表添加挑战相关字段（如果不存在）
+    try {
+      await db.execute('ALTER TABLE users ADD COLUMN challenge_win INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE users ADD COLUMN challenge_lose INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE users ADD COLUMN challenge_score INTEGER NOT NULL DEFAULT 100');
+    } catch (e) {
+      // 如果字段已存在，忽略错误
+    }
   }
 
   // 任务相关操作
@@ -170,6 +227,57 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  // TaskService需要的方法
+  Future<void> saveTasksToLocal(List<TaskModel> tasks) async {
+    if (_isWeb) {
+      return mockDatabase.saveTasksToLocal(tasks);
+    }
+    final db = await instance.database;
+    final batch = db.batch();
+    
+    // 清空现有任务
+    await db.delete('tasks');
+    
+    // 插入新任务
+    for (final task in tasks) {
+      batch.insert('tasks', task.toMap());
+    }
+    
+    await batch.commit();
+  }
+
+  Future<List<TaskModel>> getLocalTasks() async {
+    if (_isWeb) {
+      return mockDatabase.getLocalTasks();
+    }
+    return await readAllTasks();
+  }
+
+  Future<bool> updateTaskStatus(int taskId, bool isCompleted) async {
+    if (_isWeb) {
+      return mockDatabase.updateTaskStatus(taskId, isCompleted);
+    }
+    final db = await instance.database;
+    final task = await readTask(taskId);
+    if (task == null) return false;
+    
+    final updatedTask = task.copyWith(
+      isCompleted: isCompleted,
+      completedAt: isCompleted ? DateTime.now() : null,
+    );
+    
+    final result = await updateTask(updatedTask);
+    return result > 0;
+  }
+
+  Future<TaskModel?> getTaskById(int taskId) async {
+    return await readTask(taskId);
+  }
+
+  Future<void> insertTask(TaskModel task) async {
+    await createTask(task);
   }
 
   // 宠物相关操作
@@ -279,7 +387,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final maps = await db.query(
       'users',
-      columns: ['id', 'username', 'password_hash', 'is_admin', 'is_online'],
+      columns: ['id', 'username', 'password_hash', 'is_admin', 'is_online', 'challenge_win', 'challenge_lose', 'challenge_score'],
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -298,7 +406,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final maps = await db.query(
       'users',
-      columns: ['id', 'username', 'password_hash', 'is_admin', 'is_online'],
+      columns: ['id', 'username', 'password_hash', 'is_admin', 'is_online', 'challenge_win', 'challenge_lose', 'challenge_score'],
       where: 'username = ?',
       whereArgs: [username],
     );
@@ -344,6 +452,114 @@ class DatabaseHelper {
     final db = await instance.database;
     final result = await db.query('users');
     return result.map((map) => User.fromMap(map)).toList();
+  }
+
+  // Challenge operations
+  Future<void> createChallenge(Map<String, dynamic> challenge) async {
+    if (_isWeb) {
+      return mockDatabase.createChallenge(challenge);
+    }
+    final db = await instance.database;
+    await db.insert('challenge', challenge);
+  }
+
+  Future<Map<String, dynamic>?> getChallengeById(String challengeId) async {
+    if (_isWeb) {
+      return mockDatabase.getChallengeById(challengeId);
+    }
+    final db = await instance.database;
+    final maps = await db.query(
+      'challenge',
+      where: 'challengeId = ?',
+      whereArgs: [challengeId],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengesByStatus(int status) async {
+    if (_isWeb) {
+      return mockDatabase.getChallengesByStatus(status);
+    }
+    final db = await instance.database;
+    return await db.query(
+      'challenge',
+      where: 'status = ?',
+      whereArgs: [status],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengesByUserId(int userId) async {
+    if (_isWeb) {
+      return mockDatabase.getChallengesByUserId(userId);
+    }
+    final db = await instance.database;
+    return await db.query(
+      'challenge',
+      where: 'publisherId = ? OR opponentId = ?',
+      whereArgs: [userId, userId],
+    );
+  }
+
+  Future<int> updateChallenge(Map<String, dynamic> challenge) async {
+    if (_isWeb) {
+      return mockDatabase.updateChallenge(challenge);
+    }
+    final db = await instance.database;
+    return await db.update(
+      'challenge',
+      challenge,
+      where: 'challengeId = ?',
+      whereArgs: [challenge['challengeId']],
+    );
+  }
+
+  // Challenge record operations
+  Future<void> createChallengeRecord(Map<String, dynamic> record) async {
+    if (_isWeb) {
+      return mockDatabase.createChallengeRecord(record);
+    }
+    final db = await instance.database;
+    await db.insert('challenge_record', record);
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengeRecordsByChallengeId(String challengeId) async {
+    if (_isWeb) {
+      return mockDatabase.getChallengeRecordsByChallengeId(challengeId);
+    }
+    final db = await instance.database;
+    return await db.query(
+      'challenge_record',
+      where: 'challengeId = ?',
+      whereArgs: [challengeId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengeRecordsByUserId(int userId) async {
+    if (_isWeb) {
+      return mockDatabase.getChallengeRecordsByUserId(userId);
+    }
+    final db = await instance.database;
+    return await db.query(
+      'challenge_record',
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  Future<int> updateChallengeRecord(Map<String, dynamic> record) async {
+    if (_isWeb) {
+      return mockDatabase.updateChallengeRecord(record);
+    }
+    final db = await instance.database;
+    return await db.update(
+      'challenge_record',
+      record,
+      where: 'id = ?',
+      whereArgs: [record['id']],
+    );
   }
 
   Future<void> close() async {

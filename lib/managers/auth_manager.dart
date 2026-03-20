@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../database/database_helper.dart';
 
-class AuthManager {
+class AuthManager extends ChangeNotifier {
   static final AuthManager instance = AuthManager._init();
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   static User? _currentUser;
@@ -17,6 +17,12 @@ class AuthManager {
 
   // 检查是否已登录
   bool get isLoggedIn => _currentUser != null;
+
+  // 设置当前用户
+  void setCurrentUser(User? user) {
+    _currentUser = user;
+    notifyListeners();
+  }
 
   // 检查当前用户是否为管理员
   bool get isAdmin => _currentUser?.isAdmin ?? false;
@@ -81,8 +87,11 @@ class AuthManager {
     final passwordHash = _hashPassword(password);
     final newUser = User(
       username: username,
+      nickname: username,
       passwordHash: passwordHash,
       isAdmin: isAdmin,
+      createTime: DateTime.now(),
+      lastLoginTime: DateTime.now(),
     );
 
     // 保存到数据库
@@ -114,6 +123,7 @@ class AuthManager {
 
     // 登录成功，保存当前用户
     _currentUser = updatedUser;
+    notifyListeners();
     return true;
   }
 
@@ -125,6 +135,7 @@ class AuthManager {
       await _dbHelper.updateUser(updatedUser);
     }
     _currentUser = null;
+    notifyListeners();
   }
 
   // 根据用户名获取用户
@@ -135,5 +146,40 @@ class AuthManager {
   // 根据ID获取用户
   Future<User?> getUserById(int id) async {
     return await _dbHelper.getUserById(id);
+  }
+
+  // 保存用户信息
+  Future<void> saveUserInfo(Map<String, dynamic> data) async {
+    try {
+      final user = User.fromMap(data);
+      _currentUser = user;
+      setCurrentUser(user);
+      
+      // 检查本地数据库中是否已存在该用户
+      final existingUser = await _getUserByUsername(user.phone ?? user.username ?? '');
+      if (existingUser != null) {
+        // 如果存在，更新用户在线状态
+        final updatedUser = existingUser.copyWith(isOnline: true);
+        await _dbHelper.updateUser(updatedUser);
+      } else {
+        // 如果不存在，创建新用户（仅用于本地记录）
+        try {
+          final newUser = User(
+            username: user.username ?? user.phone ?? 'user_${user.userId}',
+            nickname: user.nickname,
+            passwordHash: '', // 后端登录的用户不需要本地密码
+            isAdmin: false,
+            isOnline: true,
+            createTime: user.createTime,
+            lastLoginTime: user.lastLoginTime,
+          );
+          await _dbHelper.createUser(newUser);
+        } catch (e) {
+          print('创建本地用户记录失败（不影响登录）: $e');
+        }
+      }
+    } catch (e) {
+      print('保存用户信息失败: $e');
+    }
   }
 }

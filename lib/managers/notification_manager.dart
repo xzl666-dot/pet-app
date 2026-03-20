@@ -191,8 +191,10 @@ class NotificationManager {
         return '营养值';
       case PetBenefitType.happiness:
         return '快乐度';
-      case PetBenefitType.skillPoint:
-        return '技能点';
+      case PetBenefitType.intimacy:
+        return '亲密度';
+      case PetBenefitType.exp:
+        return '经验值';
     }
   }
 }

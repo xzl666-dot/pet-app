@@ -86,8 +86,10 @@ class _FeedbackWidgetState extends State<FeedbackWidget> with SingleTickerProvid
         return '营养值';
       case PetBenefitType.happiness:
         return '快乐度';
-      case PetBenefitType.skillPoint:
-        return '技能点';
+      case PetBenefitType.intimacy:
+        return '亲密度';
+      case PetBenefitType.exp:
+        return '经验值';
     }
   }
 
@@ -131,7 +133,7 @@ class _FeedbackWidgetState extends State<FeedbackWidget> with SingleTickerProvid
     
     // 添加连续完成反馈
     if (widget.isConsecutive) {
-      feedbackLines.add('连续完成奖励：技能点 +2');
+      feedbackLines.add('连续完成奖励：营养值 +2');
     }
 
     return AnimatedBuilder(

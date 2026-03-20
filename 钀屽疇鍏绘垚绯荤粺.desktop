@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=萌宠养成系统
+Comment=Flutter Pet App - 萌宠养成系统
+Exec=/Users/xmq9999/Desktop/毕业设计/flutter_pet_app/start.sh
+Icon=/Users/xmq9999/Desktop/毕业设计/flutter_pet_app/icon.png
+Terminal=true
+Categories=Application;Development;

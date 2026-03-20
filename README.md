@@ -1,16 +1,151 @@
-# flutter_pet_app
+# 萌宠养成系统
 
-A new Flutter project.
+一个完整的Flutter Web + Node.js后端的宠物养成应用，包含8个核心模块。
 
-## Getting Started
+## 🚀 快速启动
 
-This project is a starting point for a Flutter application.
+### macOS/Linux用户
 
-A few resources to get you started if this is your first Flutter project:
+1. 打开终端，进入项目目录：
+   ```bash
+   cd /Users/xmq9999/Desktop/毕业设计/flutter_pet_app
+   ```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+2. 运行启动脚本：
+   ```bash
+   ./start.sh
+   ```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+3. 在浏览器中打开：
+   ```
+   http://localhost:3000
+   ```
+
+### Windows用户
+
+1. 双击运行 `start.bat` 文件
+
+2. 在浏览器中打开：
+   ```
+   http://localhost:3000
+   ```
+
+## 📱 测试账号
+
+- **手机号**: 13800000000
+- **密码**: 123456
+
+## 🎯 系统功能
+
+### 模块一：评估等级模块
+- S/A/B/C/D五级评估系统
+- 基于用户操作数据的自动评估
+- 等级权益和升降级机制
+
+### 模块二：评估计算模块
+- 准确度、完成效率、质量评分
+- 评估数据统计和分析
+- 异常检测机制
+
+### 模块三：宠物基础养成模块
+- 宠物状态管理（营养、快乐、亲密度）
+- 等级和经验值系统
+- 技能点分配
+
+### 模块四：评估适配任务模块
+- 任务列表管理
+- 任务完成记录
+- 任务质量评估
+
+### 模块五：激励模块
+- 多维度激励系统（积分、宝箱、成就、周期福利）
+- 每日签到、周任务、月福利
+- 宝箱解锁和成就系统
+
+### 模块六：社交互动模块
+- 好友系统
+- 点赞、互助功能
+- 分享和排行榜
+
+### 模块七：个人中心与设置模块
+- 个人信息管理
+- 数据统计和趋势图
+- 隐私设置
+
+### 模块八：宠物养成进阶与图鉴模块
+- 宠物进化系统
+- 技能学习
+- 图鉴收集和分享
+
+## 🛠️ 技术栈
+
+- **前端**: Flutter Web
+- **后端**: Node.js + Express
+- **数据库**: SQLite
+- **ORM**: Sequelize
+- **认证**: JWT
+
+## 📂 项目结构
+
+```
+flutter_pet_app/
+├── backend/              # 后端代码
+│   ├── models/          # 数据模型
+│   ├── routes/          # API路由
+│   ├── middleware/      # 中间件
+│   ├── utils/           # 工具函数
+│   └── database/        # 数据库文件
+├── lib/                 # 前端代码
+│   ├── models/          # 数据模型
+│   ├── screens/         # 页面
+│   ├── widgets/         # 组件
+│   └── services/        # 服务
+├── build/web/           # Flutter Web构建产物
+├── start.sh             # macOS/Linux启动脚本
+├── start.bat            # Windows启动脚本
+└── stop.sh              # 停止脚本
+```
+
+## 🔧 开发说明
+
+### 重新构建前端
+
+如果修改了前端代码，需要重新构建：
+
+```bash
+flutter build web --release
+```
+
+### 重启后端
+
+```bash
+# 停止服务
+./stop.sh
+
+# 启动服务
+./start.sh
+```
+
+## 📝 注意事项
+
+1. **端口占用**: 确保3000端口没有被其他程序占用
+2. **数据库**: 数据库文件位于 `backend/database/pet_app.db`
+3. **数据持久化**: 所有数据都保存在SQLite数据库中
+4. **跨设备访问**: 如需在其他设备访问，需要配置网络转发或部署到云服务器
+
+## 🌐 部署到云端
+
+如果需要将应用部署到云端，可以使用以下服务：
+
+- **Vercel**: 部署Flutter Web
+- **Railway/Render**: 部署Node.js后端
+- **云服务器**: 自建服务器部署
+
+## 📞 联系方式
+
+如有问题，请联系开发者。
+
+---
+
+**版本**: 1.0.0  
+**最后更新**: 2026-01-31

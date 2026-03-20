@@ -15,6 +15,8 @@ class _AbilityAssessmentPageState extends State<AbilityAssessmentPage> {
   String _abilityRating = '';
   List<String> _improvementSuggestions = [];
   String _recommendedDifficulty = '';
+  List<LevelMatchTask> _levelMatchTasks = [];
+  AbilityAssessmentReport? _latestReport;
 
   @override
   void initState() {
@@ -35,6 +37,8 @@ class _AbilityAssessmentPageState extends State<AbilityAssessmentPage> {
         _abilityModel = userAbilityManager.abilityModel;
         _abilityRating = userAbilityManager.getAbilityRating();
         _improvementSuggestions = userAbilityManager.getAbilityImprovementSuggestions();
+        _levelMatchTasks = userAbilityManager.getLevelMatchTasks();
+        _latestReport = userAbilityManager.getLatestAssessmentReport();
         
         // 获取推荐的任务难度
         final recommendedDifficulty = userAbilityManager.recommendTaskDifficulty();
@@ -57,6 +61,22 @@ class _AbilityAssessmentPageState extends State<AbilityAssessmentPage> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _completeLevelMatchTask(String taskId) async {
+    // 模拟完成定级赛任务，实际项目中应根据用户完成情况计算得分
+    final userAbilityManager = UserAbilityManager.instance;
+    await userAbilityManager.completeLevelMatchTask(taskId, 80); // 假设得分80
+    await _loadAbilityAssessment();
+    
+    // 显示完成成功的提示
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('定级赛任务完成！能力评估已更新。'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -86,6 +106,20 @@ class _AbilityAssessmentPageState extends State<AbilityAssessmentPage> {
                   _buildAbilityDimensionCard('坚持程度', 'persistence_level'),
                   
                   const SizedBox(height: 24),
+                  
+                  // 主动定级赛
+                  const SectionTitle('主动定级赛'),
+                  _buildLevelMatchTasksCard(),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // 被动评估报告
+                  if (_latestReport != null)
+                    ...[
+                      const SectionTitle('最新评估报告'),
+                      _buildAssessmentReportCard(),
+                      const SizedBox(height: 24),
+                    ],
                   
                   // 推荐任务难度
                   _buildRecommendationCard(),
@@ -307,6 +341,254 @@ class _AbilityAssessmentPageState extends State<AbilityAssessmentPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildLevelMatchTasksCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '定级赛任务',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '完成以下任务可以快速提升能力等级，获得更准确的能力评估',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ..._levelMatchTasks.take(5).map((task) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: task.isCompleted ? Colors.green : Theme.of(context).primaryColor,
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    color: task.isCompleted ? Colors.green.withOpacity(0.05) : Colors.white,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            task.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (task.isCompleted)
+                            const Chip(
+                              label: Text('已完成'),
+                              labelStyle: TextStyle(fontSize: 12, color: Colors.green),
+                              backgroundColor: Colors.greenAccent,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        task.description,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '难度: ${_getDifficultyText(task.difficulty)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                          if (!task.isCompleted)
+                            ElevatedButton(
+                              onPressed: () => _completeLevelMatchTask(task.id),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('完成任务'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            if (_levelMatchTasks.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  '还有 ${_levelMatchTasks.length - 5} 个任务未显示',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssessmentReportCard() {
+    if (_latestReport == null) return const SizedBox();
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '评估报告',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '${_latestReport!.generatedAt.month}月${_latestReport!.generatedAt.day}日',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // 等级变化
+            Row(
+              children: [
+                const Text('等级变化: '),
+                Text(
+                  _latestReport!.levelChange,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _latestReport!.levelChange == '等级提升' ? Colors.green : 
+                           _latestReport!.levelChange == '等级下降' ? Colors.red : Colors.blue,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            // 改进领域
+            if (_latestReport!.improvementAreas.isNotEmpty)
+              ...[
+                const Text(
+                  '需要改进的领域:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _latestReport!.improvementAreas.map((area) {
+                    return Chip(
+                      label: Text(area),
+                      labelStyle: TextStyle(fontSize: 12, color: Colors.orange),
+                      backgroundColor: Colors.orangeAccent.withOpacity(0.2),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+              ],
+            
+            // 成就领域
+            if (_latestReport!.achievementAreas.isNotEmpty)
+              ...[
+                const Text(
+                  '表现优秀的领域:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _latestReport!.achievementAreas.map((area) {
+                    return Chip(
+                      label: Text(area),
+                      labelStyle: TextStyle(fontSize: 12, color: Colors.green),
+                      backgroundColor: Colors.greenAccent.withOpacity(0.2),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+              ],
+            
+            // 个性化建议
+            if (_latestReport!.personalizedSuggestions.isNotEmpty)
+              ...[
+                const Text(
+                  '个性化建议:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 8),
+                ..._latestReport!.personalizedSuggestions.take(3).map((suggestion) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.arrow_right,
+                          color: Colors.blue,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            suggestion,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getDifficultyText(TaskDifficulty difficulty) {
+    switch (difficulty) {
+      case TaskDifficulty.easy:
+        return '简单';
+      case TaskDifficulty.medium:
+        return '中等';
+      case TaskDifficulty.hard:
+        return '困难';
+      default:
+        return '未知';
+    }
   }
 
   Color _getAbilityColor(double value) {

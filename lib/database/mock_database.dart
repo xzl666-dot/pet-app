@@ -18,19 +18,29 @@ class MockDatabase {
 
   // In-memory storage for users
   List<User> _users = [];
+
+  // In-memory storage for challenges
+  List<Map<String, dynamic>> _challenges = [];
+
+  // In-memory storage for challenge records
+  List<Map<String, dynamic>> _challengeRecords = [];
   
   // Auto-increment IDs
   int _taskIdCounter = 1;
   int _petIdCounter = 1;
   int _statIdCounter = 1;
   int _userIdCounter = 1;
+  int _challengeRecordIdCounter = 1;
   
   // Storage keys for localStorage
   static const String _usersStorageKey = 'pet_app_users';
   static const String _userIdCounterStorageKey = 'pet_app_user_id_counter';
+  static const String _challengesStorageKey = 'pet_app_challenges';
+  static const String _challengeRecordsStorageKey = 'pet_app_challenge_records';
   
   MockDatabase() {
     _loadUsersFromStorage();
+    _loadChallengesFromStorage();
   }
   
   // Load users from localStorage
@@ -73,6 +83,49 @@ class MockDatabase {
       }
     }
   }
+
+  // Load challenges from localStorage
+  void _loadChallengesFromStorage() {
+    if (kIsWeb) {
+      try {
+        // Load challenges
+        final challengesJson = window.localStorage[_challengesStorageKey];
+        if (challengesJson != null) {
+          final List<dynamic> challengesList = jsonDecode(challengesJson);
+          _challenges = List<Map<String, dynamic>>.from(challengesList);
+        }
+
+        // Load challenge records
+        final challengeRecordsJson = window.localStorage[_challengeRecordsStorageKey];
+        if (challengeRecordsJson != null) {
+          final List<dynamic> recordsList = jsonDecode(challengeRecordsJson);
+          _challengeRecords = List<Map<String, dynamic>>.from(recordsList);
+        }
+      } catch (e) {
+        print('Error loading challenges from localStorage: $e');
+        // If error occurs, initialize with empty data
+        _challenges = [];
+        _challengeRecords = [];
+      }
+    }
+  }
+
+  // Save challenges to localStorage
+  void _saveChallengesToStorage() {
+    if (kIsWeb) {
+      try {
+        // Save challenges
+        final challengesJson = jsonEncode(_challenges);
+        window.localStorage[_challengesStorageKey] = challengesJson;
+
+        // Save challenge records
+        final challengeRecordsJson = jsonEncode(_challengeRecords);
+        window.localStorage[_challengeRecordsStorageKey] = challengeRecordsJson;
+      } catch (e) {
+        print('Error saving challenges to localStorage: $e');
+      }
+    }
+  }
   
   // Task operations
   Future<TaskModel> createTask(TaskModel task) async {
@@ -106,6 +159,28 @@ class MockDatabase {
     final initialLength = _tasks.length;
     _tasks.removeWhere((task) => task.id == id);
     return initialLength - _tasks.length;
+  }
+
+  // TaskService需要的方法
+  Future<void> saveTasksToLocal(List<TaskModel> tasks) async {
+    _tasks = tasks;
+  }
+
+  Future<List<TaskModel>> getLocalTasks() async {
+    return [..._tasks];
+  }
+
+  Future<bool> updateTaskStatus(int taskId, bool isCompleted) async {
+    final task = await readTask(taskId);
+    if (task == null) return false;
+    
+    final updatedTask = task.copyWith(
+      isCompleted: isCompleted,
+      completedAt: isCompleted ? DateTime.now() : null,
+    );
+    
+    final result = await updateTask(updatedTask);
+    return result > 0;
   }
   
   // Pet operations
@@ -204,5 +279,62 @@ class MockDatabase {
     _users.removeWhere((user) => user.id == id);
     _saveUsersToStorage();
     return initialLength - _users.length;
+  }
+
+  // Challenge operations
+  Future<void> createChallenge(Map<String, dynamic> challenge) async {
+    _challenges.add(challenge);
+    _saveChallengesToStorage();
+  }
+
+  Future<Map<String, dynamic>?> getChallengeById(String challengeId) async {
+    try {
+      return _challenges.firstWhere((challenge) => challenge['challengeId'] == challengeId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengesByStatus(int status) async {
+    return _challenges.where((challenge) => challenge['status'] == status).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengesByUserId(int userId) async {
+    return _challenges.where((challenge) => challenge['publisherId'] == userId || challenge['opponentId'] == userId).toList();
+  }
+
+  Future<int> updateChallenge(Map<String, dynamic> challenge) async {
+    final index = _challenges.indexWhere((c) => c['challengeId'] == challenge['challengeId']);
+    if (index != -1) {
+      _challenges[index] = challenge;
+      _saveChallengesToStorage();
+      return 1;
+    }
+    return 0;
+  }
+
+  // Challenge record operations
+  Future<void> createChallengeRecord(Map<String, dynamic> record) async {
+    final newRecord = {...record, 'id': _challengeRecordIdCounter++};
+    _challengeRecords.add(newRecord);
+    _saveChallengesToStorage();
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengeRecordsByChallengeId(String challengeId) async {
+    return _challengeRecords.where((record) => record['challengeId'] == challengeId).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getChallengeRecordsByUserId(int userId) async {
+    return _challengeRecords.where((record) => record['userId'] == userId).toList();
+  }
+
+  Future<int> updateChallengeRecord(Map<String, dynamic> record) async {
+    final index = _challengeRecords.indexWhere((r) => r['id'] == record['id']);
+    if (index != -1) {
+      _challengeRecords[index] = record;
+      _saveChallengesToStorage();
+      return 1;
+    }
+    return 0;
   }
 }

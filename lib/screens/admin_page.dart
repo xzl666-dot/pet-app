@@ -80,7 +80,7 @@ class _AdminPageState extends State<AdminPage> {
         Text('宠物形态: ${pet.form.getFormName()}'),
         Text('营养值: ${pet.nutrition}'),
         Text('幸福值: ${pet.happiness}'),
-        Text('技能点: ${pet.skillPoint}'),
+        Text('经验值: ${pet.exp}'),
         Text('创建时间: ${pet.createdAt.toString()}'),
         Text('最后更新: ${pet.lastUpdated.toString()}'),
       ],

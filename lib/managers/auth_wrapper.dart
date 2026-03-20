@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../managers/auth_manager.dart';
 import '../screens/login_page.dart';
 import '../screens/pet_selection_page.dart';
 import '../managers/pet_state_manager.dart';
+import '../managers/auth_manager.dart';
+import '../utils/token_util.dart';
 
 /// 认证包装器组件，用于管理认证状态和导航
 class AuthWrapper extends StatefulWidget {
@@ -32,32 +33,48 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _checkAuthAndPet() async {
+    if (!mounted) return;
+    
     setState(() {
       _isChecking = true;
     });
 
-    // 检查认证状态
-    if (!_authManager.isLoggedIn) {
-      // 如果未登录，导航到登录页面
-      Navigator.pushReplacementNamed(context, '/login');
-      return;
-    }
-
-    // 如果要求必须有宠物，检查是否有宠物
-    if (widget.requirePet) {
-      final pets = await _petManager.getAllPets();
-      _hasPet = pets.isNotEmpty;
-
-      if (!_hasPet) {
-        // 如果没有宠物，导航到宠物选择页面
-        Navigator.pushReplacementNamed(context, '/pet_selection');
+    try {
+      // 检查认证状态（使用TokenUtil检查是否有有效的token）
+      final isLogin = await TokenUtil.instance.isLogin();
+      if (!isLogin) {
+        // 如果未登录，导航到登录页面
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
         return;
       }
-    }
 
-    setState(() {
-      _isChecking = false;
-    });
+      // 如果已登录但内存中没有用户信息，尝试从本地存储恢复
+      if (!_authManager.isLoggedIn) {
+        final userInfo = await TokenUtil.instance.getUserInfo();
+        if (userInfo != null) {
+          await _authManager.saveUserInfo(userInfo);
+        } else {
+          // 如果无法恢复用户信息，视为未登录
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          }
+          return;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
+        });
+      }
+    } catch (e) {
+      print('AuthWrapper error: $e');
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    }
   }
 
   @override

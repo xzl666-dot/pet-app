@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
 import '../models/task_model.dart';
 import '../database/task_database.dart';
 import '../widgets/feedback_widget.dart';
+import '../widgets/pet_upgrade_dialog.dart';
 import '../managers/pet_state_manager.dart';
 import '../managers/data_statistics_manager.dart';
+import '../managers/auth_manager.dart';
+import '../managers/pet_growth_manager.dart';
+import '../utils/token_util.dart';
 
 class TaskListPage extends StatefulWidget {
   const TaskListPage({Key? key}) : super(key: key);
@@ -18,17 +25,102 @@ class _TaskListPageState extends State<TaskListPage> {
   final _taskDatabase = TaskDatabase.instance;
   final _petManager = PetStateManager.instance;
   final _statsManager = DataStatisticsManager.instance;
+  final _authManager = AuthManager.instance;
+  final _petGrowthManager = PetGrowthManager();
+  StreamSubscription? _upgradeSubscription;
+  List<TaskModel> _tasks = [];
 
   @override
   void initState() {
     super.initState();
     _refreshTasks();
+    _upgradeSubscription = _petGrowthManager.upgradeStream.listen((event) {
+      if (mounted) {
+        showPetUpgradeDialog(
+          context,
+          pet: event.pet,
+          oldLevel: event.oldLevel,
+          newLevel: event.newLevel,
+        );
+      }
+    });
   }
 
-  void _refreshTasks() {
+  @override
+  void dispose() {
+    _upgradeSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshTasks() async {
+    try {
+      final user = _authManager.currentUser;
+      if (user != null) {
+        final token = await TokenUtil.instance.getAccessToken();
+        final userId = user.userId ?? user.id;
+
+        if (token != null && userId != null) {
+          // 从后端获取任务列表
+          final response = await http.get(
+            Uri.parse('http://localhost:3000/api/task/list?userId=$userId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'token': token,
+            },
+          );
+
+          print('任务列表响应: ${response.body}');
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            if (data['code'] == 200) {
+              final taskList = data['data']['taskList'] ?? [];
+              setState(() {
+                _tasks = taskList.map((taskData) => TaskModel(
+                  id: taskData['id'],
+                  name: taskData['name'],
+                  category: TaskCategory.study,
+                  frequency: TaskFrequency.dailyBasic,
+                  difficulty: taskData['difficulty'] ?? 1,
+                  deadline: DateTime.fromMillisecondsSinceEpoch(taskData['deadline'] * 1000),
+                  benefitType: _parseBenefitType(taskData['benefit_type']),
+                  benefitValue: taskData['benefit_value'] ?? 10,
+                  growthValue: 10,
+                  happinessValue: 5,
+                  duration: 30,
+                  weight: 0.5,
+                  description: taskData['description'] ?? '',
+                  tags: [],
+                  isCompleted: taskData['is_completed'] == 1,
+                  createdAt: DateTime.now(),
+                )).toList();
+              });
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('加载任务失败: $e');
+    }
+
+    // 如果后端加载失败，使用本地数据
     setState(() {
       _tasksFuture = _taskDatabase.readAllTasks();
     });
+  }
+
+  PetBenefitType _parseBenefitType(String typeStr) {
+    switch (typeStr) {
+      case 'nutrition':
+        return PetBenefitType.nutrition;
+      case 'happiness':
+        return PetBenefitType.happiness;
+      case 'skill':
+        return PetBenefitType.nutrition;
+      default:
+        return PetBenefitType.nutrition;
+    }
   }
 
   @override
@@ -37,30 +129,21 @@ class _TaskListPageState extends State<TaskListPage> {
       appBar: AppBar(
         title: const Text('每日任务'),
         actions: [
-          // 移除了手动添加任务的按钮，改为系统自动生成
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshTasks,
+          ),
         ],
       ),
-      body: FutureBuilder<List<TaskModel>>(
-        future: _tasksFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('加载失败: ${snapshot.error}'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('今日暂无任务，明天会自动生成新任务'));
-          } else {
-            final tasks = snapshot.data!;
-            return ListView.builder(
-              itemCount: tasks.length,
+      body: _tasks.isEmpty
+          ? const Center(child: Text('今日暂无任务'))
+          : ListView.builder(
+              itemCount: _tasks.length,
               itemBuilder: (context, index) {
-                final task = tasks[index];
+                final task = _tasks[index];
                 return _buildTaskItem(task);
               },
-            );
-          }
-        },
-      ),
+            ),
     );
   }
 
@@ -96,10 +179,6 @@ class _TaskListPageState extends State<TaskListPage> {
                 }
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => _deleteTask(task.id!),
-            ),
           ],
         ),
       ),
@@ -126,8 +205,11 @@ class _TaskListPageState extends State<TaskListPage> {
       case PetBenefitType.happiness:
         benefitTypeName = '快乐度';
         break;
-      case PetBenefitType.skillPoint:
-        benefitTypeName = '技能点';
+      case PetBenefitType.intimacy:
+        benefitTypeName = '亲密度';
+        break;
+      case PetBenefitType.exp:
+        benefitTypeName = '经验值';
         break;
     }
     return '奖励: $benefitTypeName +${task.benefitValue}';
@@ -152,102 +234,98 @@ class _TaskListPageState extends State<TaskListPage> {
         return '营养值';
       case PetBenefitType.happiness:
         return '快乐度';
-      case PetBenefitType.skillPoint:
-        return '技能点';
+      case PetBenefitType.intimacy:
+        return '亲密度';
+      case PetBenefitType.exp:
+        return '经验值';
     }
   }
 
   Future<void> _completeTask(TaskModel task) async {
-    // 更新任务状态
-    final now = DateTime.now();
-    await _taskDatabase.update(
-      task.copyWith(
-        isCompleted: true,
-        completedAt: now,
-      ),
-    );
+    try {
+      final user = _authManager.currentUser;
+      if (user == null) {
+        throw Exception('用户未登录');
+      }
 
-    // 计算效率加成
-    double efficiencyMultiplier = 1.0;
-    final taskDuration = now.difference(task.createdAt ?? now).inMinutes;
-    
-    // 根据完成时间计算效率加成
-    switch (task.difficulty) {
-      case TaskDifficulty.easy:
-        if (taskDuration < 30) efficiencyMultiplier = 1.2; // 30分钟内完成简单任务
-        break;
-      case TaskDifficulty.medium:
-        if (taskDuration < 60) efficiencyMultiplier = 1.3; // 1小时内完成中等任务
-        break;
-      case TaskDifficulty.hard:
-        if (taskDuration < 120) efficiencyMultiplier = 1.5; // 2小时内完成困难任务
-        break;
-    }
+      final token = await TokenUtil.instance.getAccessToken();
+      final userId = user.userId ?? user.id;
 
-    // 检查是否为连续完成
-    bool isConsecutiveCompletion = await _checkConsecutiveCompletion();
+      if (token == null || userId == null) {
+        throw Exception('Token或用户ID不存在');
+      }
 
-    // 更新宠物状态
-    await _petManager.updatePetState(
-      task.benefitType,
-      task.benefitValue,
-      efficiencyMultiplier: efficiencyMultiplier,
-      isConsecutiveCompletion: isConsecutiveCompletion,
-    );
-
-    // 更新统计数据，计算I(M;E)值
-    await _statsManager.updateAfterTaskCompletion(task);
-
-    // 显示反馈
-    if (mounted) {
-      FeedbackWidget.showFeedback(
-        context,
-        task,
-        efficiencyMultiplier: efficiencyMultiplier,
-        isConsecutive: isConsecutiveCompletion,
+      // 调用后端完成任务接口
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/task/complete'),
+        headers: {
+          'Content-Type': 'application/json',
+          'token': token,
+        },
+        body: jsonEncode({
+          'userId': userId,
+          'taskId': task.id,
+        }),
       );
+
+      print('完成任务响应: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['code'] == 200) {
+          // 更新本地任务状态
+          setState(() {
+            final index = _tasks.indexWhere((t) => t.id == task.id);
+            if (index != -1) {
+              _tasks[index] = task.copyWith(isCompleted: true);
+            }
+          });
+
+          // 调用激励联动接口，获得积分和抽奖券
+          final pet = await _petManager.getOrCreatePet();
+          final incentiveResponse = await http.post(
+            Uri.parse('http://localhost:3000/api/incentive/link'),
+            headers: {
+              'Content-Type': 'application/json',
+              'token': token!,
+            },
+            body: jsonEncode({
+              'userId': userId,
+              'petId': pet.id,
+              'taskScore': 100, // 假设任务完成得分为100
+              'taskQuality': 90, // 假设任务质量为90
+            }),
+          );
+
+          if (incentiveResponse.statusCode == 200) {
+            final incentiveData = jsonDecode(incentiveResponse.body);
+            if (incentiveData['code'] == 200) {
+              print('任务完成获得积分: ${incentiveData['data']['finalIntegral']}');
+              // 任务中心只产出积分和抽奖券，宠物成长只靠道具
+            }
+          }
+
+          // 显示反馈
+          if (mounted) {
+            FeedbackWidget.showFeedback(
+              context,
+              task,
+              efficiencyMultiplier: 1.0,
+            );
+          }
+        } else {
+          throw Exception(data['msg'] ?? '完成任务失败');
+        }
+      } else {
+        throw Exception('网络请求失败');
+      }
+    } catch (e) {
+      print('完成任务失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('完成任务失败: $e')),
+        );
+      }
     }
-
-    _refreshTasks();
-  }
-
-  // 检查是否为连续完成
-  Future<bool> _checkConsecutiveCompletion() async {
-    final tasks = await _taskDatabase.readAllTasks();
-    final completedTasks = tasks
-        .where((task) => task.isCompleted && task.completedAt != null)
-        .toList();
-    
-    if (completedTasks.length < 2) {
-      return false;
-    }
-
-    // 按完成时间排序
-    completedTasks.sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
-    
-    // 检查最近两个任务的完成时间是否在同一天
-    final lastTask = completedTasks[0];
-    final secondLastTask = completedTasks[1];
-    
-    final lastDate = DateTime(
-      lastTask.completedAt!.year,
-      lastTask.completedAt!.month,
-      lastTask.completedAt!.day,
-    );
-    
-    final secondLastDate = DateTime(
-      secondLastTask.completedAt!.year,
-      secondLastTask.completedAt!.month,
-      secondLastTask.completedAt!.day,
-    );
-    
-    // 检查是否为连续的日期
-    final difference = lastDate.difference(secondLastDate).inDays;
-    return difference == 1;
-  }
-
-  Future<void> _deleteTask(int id) async {
-    await _taskDatabase.delete(id);
-    _refreshTasks();
   }
 }

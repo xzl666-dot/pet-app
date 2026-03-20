@@ -47,20 +47,11 @@ class PetStateManager {
     final pet = await getOrCreatePet();
     int nutrition = pet.nutrition;
     int happiness = pet.happiness;
-    int skillPoint = pet.skillPoint;
+    int intimacy = pet.intimacy;
+    int exp = pet.exp;
 
-    // 计算最终奖励值（考虑效率加成和连续完成奖励）
+    // 计算最终奖励值
     int finalValue = value;
-    
-    // 效率加成：高效完成任务获得额外奖励
-    if (efficiencyMultiplier > 1.0) {
-      finalValue = (value * efficiencyMultiplier).toInt();
-    }
-    
-    // 连续完成奖励：连续完成任务获得额外技能点
-    if (isConsecutiveCompletion) {
-      skillPoint = _clampValue(skillPoint + 2, 0, 100); // 额外2点技能点
-    }
 
     // 根据收益类型更新对应属性
     switch (benefitType) {
@@ -70,20 +61,27 @@ class PetStateManager {
       case PetBenefitType.happiness:
         happiness = _clampValue(happiness + finalValue, 0, 100);
         break;
-      case PetBenefitType.skillPoint:
-        skillPoint = _clampValue(skillPoint + finalValue, 0, 100);
+      case PetBenefitType.intimacy:
+        intimacy = _clampValue(intimacy + finalValue, 0, 800);
+        break;
+      case PetBenefitType.exp:
+        // 经验只来自成长奶昔
+        if (pet.level < 10) {
+          exp += finalValue;
+        }
         break;
     }
 
     // 检查是否需要进化形态
-    PetForm newForm = _checkFormEvolution(pet.form, skillPoint);
+    PetForm newForm = _checkFormEvolution(pet.form, pet.level);
     bool hasEvolved = newForm != pet.form;
 
     // 创建更新后的宠物实例
     final updatedPet = pet.copyWith(
       nutrition: nutrition,
       happiness: happiness,
-      skillPoint: skillPoint,
+      intimacy: intimacy,
+      exp: exp,
       form: newForm,
       lastUpdated: DateTime.now(),
     );
@@ -99,22 +97,22 @@ class PetStateManager {
   Future<PetModel> updatePetAttributes({
     int? nutrition,
     int? happiness,
-    int? skillPoint,
+    int? exp,
   }) async {
     final pet = await getOrCreatePet();
 
     int newNutrition = nutrition ?? pet.nutrition;
     int newHappiness = happiness ?? pet.happiness;
-    int newSkillPoint = skillPoint ?? pet.skillPoint;
+    int newExp = exp ?? pet.exp;
 
     // 检查是否需要进化形态
-    PetForm newForm = _checkFormEvolution(pet.form, newSkillPoint);
+    PetForm newForm = _checkFormEvolution(pet.form, newExp);
 
     // 创建更新后的宠物实例
     final updatedPet = pet.copyWith(
       nutrition: _clampValue(newNutrition, 0, 100),
       happiness: _clampValue(newHappiness, 0, 100),
-      skillPoint: _clampValue(newSkillPoint, 0, 100),
+      exp: newExp,
       form: newForm,
       lastUpdated: DateTime.now(),
     );
@@ -136,21 +134,23 @@ class PetStateManager {
   }
 
   // 检查形态进化
-  PetForm _checkFormEvolution(PetForm currentForm, int skillPoint) {
+  PetForm _checkFormEvolution(PetForm currentForm, int level) {
     PetForm newForm = currentForm;
 
-    if (skillPoint >= PetForm.advanced.getSkillPointThreshold()) {
+    if (level >= 10) {
       newForm = PetForm.advanced;
-    } else if (skillPoint >= PetForm.adult.getSkillPointThreshold()) {
+    } else if (level >= 7) {
       newForm = PetForm.adult;
-    } else if (skillPoint >= PetForm.adolescent.getSkillPointThreshold()) {
+    } else if (level >= 4) {
       newForm = PetForm.adolescent;
+    } else {
+      newForm = PetForm.baby;
     }
 
     return newForm;
   }
 
-  // 限制数值在0-100之间
+  // 限制数值在指定范围内
   int _clampValue(int value, int min, int max) {
     if (value < min) return min;
     if (value > max) return max;

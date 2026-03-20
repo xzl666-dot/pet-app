@@ -13,8 +13,19 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.0
-  intl: ^0.18.1
+  intl: ^0.17.0
   path_provider: ^2.1.2
+  dio: ^5.4.3
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+  crypto: ^3.0.3
+  device_info_plus: ^9.1.0
+  uuid: ^4.2.1
+  fluttertoast: ^8.2.4
+  provider: ^6.1.1
+  audioplayers: ^5.2.1
+  http: ^1.2.0
+  fl_chart: ^0.68.0
 
 
 dev_dependencies:
@@ -24,3 +35,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/avatars/
+    - assets/images/pets/
+    - assets/images/evolutions/
